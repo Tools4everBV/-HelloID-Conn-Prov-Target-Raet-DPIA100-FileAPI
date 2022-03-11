@@ -1,0 +1,76 @@
+[
+  {
+    "key": "dpia100.fileprefix",
+    "type": "input",
+    "defaultValue": "DPIA100-",
+    "templateOptions": {
+      "label": "DPIA100 File prefix",
+      "placeholder": "DPIA100-",
+      "description": "",
+      "required": true
+    }
+  },
+  {
+    "key": "dpia100.creatiegebruiker",
+    "type": "input",
+    "defaultValue": "Batstart",
+    "templateOptions": {
+      "label": "DPIA100 Creatiegebruiker",
+      "placeholder": "Batstart",
+      "description": "",
+      "required": true
+    }
+  },
+  {
+    "key": "dpia100.procescode",
+    "type": "input",
+    "defaultValue": "MAI",
+    "templateOptions": {
+      "label": "DPIA100 Procescode",
+      "placeholder": "MAI",
+      "description": "",
+      "required": true
+    }
+  },
+  {
+    "key": "dpia100.stam",
+    "type": "input",
+    "defaultValue": "S",
+    "templateOptions": {
+      "label": "DPIA100 Stam",
+      "placeholder": "S",
+      "description": "",
+      "required": true
+    }
+  },
+  {
+    "key": "clientid",
+    "type": "input",
+    "templateOptions": {
+      "label": "Client ID",
+      "description": "",
+      "required": true
+    }
+  },
+  {
+    "key": "clientsecret",
+    "type": "input",
+    "templateOptions": {
+      "label": "Client Secret",
+      "type": "password",
+      "placeholder": "",
+      "description": "",
+      "required": true
+    }
+  },
+  {
+    "key": "tenantid",
+    "type": "input",
+    "templateOptions": {
+      "label": "Tenant ID",
+      "placeholder": "",
+      "description": "",
+      "required": true
+    }
+  }
+]
