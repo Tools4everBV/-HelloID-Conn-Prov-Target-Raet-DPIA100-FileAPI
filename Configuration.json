@@ -2,9 +2,9 @@
   {
     "key": "dpia100.fileprefix",
     "type": "input",
-    "defaultValue": "DPIA100-",
+    "defaultValue": "DPIA100_IMP",
     "templateOptions": {
-      "label": "DPIA100 File prefix",
+      "label": "DPIA100 File prefix (Must be DPIA100_IMP)",
       "placeholder": "DPIA100-",
       "description": "",
       "required": true
