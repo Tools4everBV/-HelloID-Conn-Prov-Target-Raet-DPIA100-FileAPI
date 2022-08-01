@@ -86,7 +86,7 @@ $user = $config.dpia100.creatiegebruiker
 $prefix = $config.dpia100.fileprefix
 $stam = $config.dpia100.stam
 $suffix = Get-Date -Format ddMMyyy
-$filename = $prefix + $suffix + ".txt"
+$filename = $prefix + $suffix + '-'+ $($account.externalID) + ".txt"
 $currentDate = Get-Date -Format ddMMyyyy
 $productionTypeDate = Get-Date -Format MMyyyy
 
