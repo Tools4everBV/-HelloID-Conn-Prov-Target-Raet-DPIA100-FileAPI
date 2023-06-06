@@ -213,7 +213,7 @@ if ($account.mail -ne $p.contact.business.email) {
                 "--$boundary--"
             ) -join $LF
 
-            #$result = Invoke-WebRequest -Uri $PostURL -Method 'POST' -ContentType "multipart/related;boundary=$boundary" -Headers $Script:AuthenticationHeaders -Body $bodyLines
+            $result = Invoke-WebRequest -Uri $PostURL -Method 'POST' -ContentType "multipart/related;boundary=$boundary" -Headers $Script:AuthenticationHeaders -Body $bodyLines
 
             $success = $True
             $auditMessage = "for person " + $p.DisplayName + " DPIA100 successfully exported"
