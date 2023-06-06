@@ -11,7 +11,71 @@ $TenantId = $config.tenantid
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
 
-function New-RaetSession { 
+$Script:AuthenticationUri = "https://connect.visma.com/connect/token"
+$Script:BaseUri = "https://fileapi.youforce.com/"
+
+#region functions
+function Resolve-HTTPError {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory,
+            ValueFromPipeline
+        )]
+        [object]$ErrorObject
+    )
+    process {
+        $httpErrorObj = [PSCustomObject]@{
+            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
+            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
+            RequestUri            = $ErrorObject.TargetObject.RequestUri
+            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
+            ErrorMessage          = ''
+        }
+        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
+            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+        }
+        Write-Output $httpErrorObj
+    }
+}
+
+function Get-ErrorMessage {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory,
+            ValueFromPipeline
+        )]
+        [object]$ErrorObject
+    )
+    process {
+        $errorMessage = [PSCustomObject]@{
+            VerboseErrorMessage = $null
+            AuditErrorMessage   = $null
+        }
+
+        if ( $($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+            $httpErrorObject = Resolve-HTTPError -Error $ErrorObject
+
+            $errorMessage.VerboseErrorMessage = $httpErrorObject.ErrorMessage
+
+            $errorMessage.AuditErrorMessage = $httpErrorObject.ErrorMessage
+        }
+
+        # If error message empty, fall back on $ex.Exception.Message
+        if ([String]::IsNullOrEmpty($errorMessage.VerboseErrorMessage)) {
+            $errorMessage.VerboseErrorMessage = $ErrorObject.Exception.Message
+        }
+        if ([String]::IsNullOrEmpty($errorMessage.AuditErrorMessage)) {
+            $errorMessage.AuditErrorMessage = $ErrorObject.Exception.Message
+        }
+
+        Write-Output $errorMessage
+    }
+}
+
+function New-RaetSession {
     [CmdletBinding()]
     param (
         [Alias("Param1")] 
@@ -29,58 +93,77 @@ function New-RaetSession {
         [string]
         $TenantId
     )
-   
+
     #Check if the current token is still valid
-    if (Confirm-AccessTokenIsValid -eq $true) {       
+    $accessTokenValid = Confirm-AccessTokenIsValid
+    if ($true -eq $accessTokenValid) {
         return
     }
 
-    $url = "https://api.raet.com/authentication/token"
-    $authorisationBody = @{
-        'grant_type'    = "client_credentials"
-        'client_id'     = $ClientId
-        'client_secret' = $ClientSecret
-    } 
     try {
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12;
-        $result = Invoke-WebRequest -Uri $url -Method Post -Body $authorisationBody -ContentType 'application/x-www-form-urlencoded' -Headers @{'Cache-Control' = "no-cache" } -Proxy:$Proxy -UseBasicParsing
-        $accessToken = $result.Content | ConvertFrom-Json
-        $Script:expirationTimeAccessToken = (Get-Date).AddSeconds($accessToken.expires_in)
+        # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
+
+        $authorisationBody = @{
+            'grant_type'    = "client_credentials"
+            'client_id'     = $ClientId
+            'client_secret' = $ClientSecret
+            'tenant_id'     = $TenantId
+        }        
+        $splatAccessTokenParams = @{
+            Uri             = $Script:AuthenticationUri
+            Headers         = @{'Cache-Control' = "no-cache" }
+            Method          = 'POST'
+            ContentType     = "application/x-www-form-urlencoded"
+            Body            = $authorisationBody
+            UseBasicParsing = $true
+        }
+
+        Write-Verbose "Creating Access Token at uri '$($splatAccessTokenParams.Uri)'"
+
+        $result = Invoke-RestMethod @splatAccessTokenParams -Verbose:$false
+        if ($null -eq $result.access_token) {
+            throw $result
+        }
+
+        $Script:expirationTimeAccessToken = (Get-Date).AddSeconds($result.expires_in)
 
         $Script:AuthenticationHeaders = @{
-            'X-Client-Id'      = $ClientId;
-            'Authorization'    = "Bearer $($accessToken.access_token)";
-            'X-Raet-Tenant-Id' = $TenantId;
-        }     
-        
+            'Authorization' = "Bearer $($result.access_token)"
+            'Accept'        = "application/json"
+        }
 
-    } catch {
-        if ($_.Exception.Response.StatusCode -eq "Forbidden") {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.Exception.Message)'"
-        } elseif (![string]::IsNullOrEmpty($_.ErrorDetails.Message)) {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.ErrorDetails.Message)'" 
-        } else {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_)'" 
-        }  
-        throw $errorMessage
-    } 
+        Write-Verbose "Successfully created Access Token at uri '$($splatAccessTokenParams.Uri)'"
+    }
+    catch {
+        $ex = $PSItem
+        $errorMessage = Get-ErrorMessage -ErrorObject $ex
+
+        Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($($errorMessage.VerboseErrorMessage))"
+
+        $auditLogs.Add([PSCustomObject]@{
+                # Action  = "" # Optional
+                Message = "Error creating Access Token at uri ''$($splatAccessTokenParams.Uri)'. Please check credentials. Error Message: $($errorMessage.AuditErrorMessage)"
+                IsError = $true
+            })     
+    }
 }
 
 function Confirm-AccessTokenIsValid {
     if ($null -ne $Script:expirationTimeAccessToken) {
         if ((Get-Date) -le $Script:expirationTimeAccessToken) {
             return $true
-        }        
+        }
     }
-    return $false    
+    return $false
 }
+#endregion functions
 
 #Change mapping here
 $account = [PSCustomObject]@{
     externalId = $p.externalid
     mail = $p.accounts.MicrosoftActiveDirectory.mail
 }
-
 
 #Default variables for export
 $user = $config.dpia100.creatiegebruiker
@@ -115,7 +198,7 @@ if ($account.mail -ne $p.contact.business.email) {
         #Export DPIA100
         Try{
             new-RaetSession -ClientId $clientId -ClientSecret $clientSecret -TenantId $tenantID
-            $PostURL = 'https://api.raet.com/mft/v1.0/files?uploadType=multipart'
+            $PostURL = "$($Script:BaseUri)/v1.0/files?uploadType=multipart"
             $boundary = "foo_bar_baz"
             $LF = "`r`n"
             $bodyLines = (
