@@ -1,21 +1,16 @@
-#Initialize default properties
-$p = $person | ConvertFrom-Json
-$success = $False;
-$auditMessage = "for person " + $p.DisplayName
-$config = $configuration | ConvertFrom-Json
+#################################################
+# HelloID-Conn-Prov-Target-RAET-FileAPI-DPIA100-Update
+# PowerShell V2
+#################################################
 
-#Supportive Functions:
-$clientId = $config.clientid
-$clientSecret = $config.clientsecret
-$TenantId = $config.tenantid
-
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+# Enable TLS1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
 $Script:AuthenticationUri = "https://connect.visma.com/connect/token"
 $Script:BaseUri = "https://fileapi.youforce.com/"
 
 #region functions
-function Resolve-HTTPError {
+function Resolve-RAET-FileAPI-DPIA100-HTTPError {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory,
@@ -41,7 +36,7 @@ function Resolve-HTTPError {
     }
 }
 
-function Get-ErrorMessage {
+function Get-RAET-FileAPI-DPIA100-ErrorMessage {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory,
@@ -75,7 +70,7 @@ function Get-ErrorMessage {
     }
 }
 
-function New-RaetSession {
+function New-RAET-FileAPI-DPIA100-Session {
     [CmdletBinding()]
     param (
         [Alias("Param1")] 
@@ -95,7 +90,7 @@ function New-RaetSession {
     )
 
     #Check if the current token is still valid
-    $accessTokenValid = Confirm-AccessTokenIsValid
+    $accessTokenValid = Confirm-RAET-FileAPI-DPIA100-AccessTokenIsValid
     if ($true -eq $accessTokenValid) {
         return
     }
@@ -119,7 +114,7 @@ function New-RaetSession {
             UseBasicParsing = $true
         }
 
-        Write-Verbose "Creating Access Token at uri '$($splatAccessTokenParams.Uri)'"
+        Write-Information "Creating Access Token at uri '$($splatAccessTokenParams.Uri)'"
 
         $result = Invoke-RestMethod @splatAccessTokenParams -Verbose:$false
         if ($null -eq $result.access_token) {
@@ -133,13 +128,13 @@ function New-RaetSession {
             'Accept'        = "application/json"
         }
 
-        Write-Verbose "Successfully created Access Token at uri '$($splatAccessTokenParams.Uri)'"
+        Write-Information "Successfully created Access Token at uri '$($splatAccessTokenParams.Uri)'"
     }
     catch {
         $ex = $PSItem
-        $errorMessage = Get-ErrorMessage -ErrorObject $ex
+        $errorMessage = Get-RAET-FileAPI-DPIA100-ErrorMessage -ErrorObject $ex
 
-        Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($($errorMessage.VerboseErrorMessage))"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($($errorMessage.VerboseErrorMessage))"
 
         $auditLogs.Add([PSCustomObject]@{
                 # Action  = "" # Optional
@@ -149,7 +144,7 @@ function New-RaetSession {
     }
 }
 
-function Confirm-AccessTokenIsValid {
+function Confirm-RAET-FileAPI-DPIA100-AccessTokenIsValid {
     if ($null -ne $Script:expirationTimeAccessToken) {
         if ((Get-Date) -le $Script:expirationTimeAccessToken) {
             return $true
@@ -157,87 +152,126 @@ function Confirm-AccessTokenIsValid {
     }
     return $false
 }
-#endregion functions
+#endregion
 
-#Change mapping here
-$account = [PSCustomObject]@{
-    externalId = $p.externalid
-    mail = $p.accounts.MicrosoftActiveDirectory.mail
-}
-
-#Default variables for export
-$user = $config.dpia100.creatiegebruiker
-$prefix = $config.dpia100.fileprefix
-$stam = $config.dpia100.stam
-$suffix = Get-Date -Format ddMMyyy
-$filename = $prefix + $suffix + '-'+ $($account.externalID) + ".txt"
-$currentDate = Get-Date -Format ddMMyyyy
-$productionTypeDate = Get-Date -Format MMyyyy
-
-
-#Building fixed length fields
-$processcode = "IMP $(" " * 3)".Substring(0,3)
-$indication= "$stam $(" " * 1)".Substring(0,1) # V for Variable S for Stam
-$exportDate = "$currentDate $(" " * 11)".Substring(0,11)
-$startDate = "$currentDate $(" " * 11)".Substring(0,11)
-$creationUser = "$user $(" " * 16)".Substring(0,16)
-$productionType = "NOR$productionTypeDate $(" " * 9)".Substring(0,9)
-$spaces = "$(" " * 30)".Substring(0,30)
-
-#Input Variables from HelloID
-$objectId = "$($account.externalId) $(" " * 50)".Substring(0,50)
-$rubrieksCode = "P01035 $(" " * 6)".Substring(0,6)
-$value = "$($account.mail) $(" " * 50)".Substring(0,50)
-
-$output = "$processcode" + "$rubriekscode" + "$objectId" + "$indication" + "$exportDate" + "$creationUser" + "$value" + "$startDate" + "$spaces" + "$productionType"
-
-
-if ($account.mail -ne $p.contact.business.email) {
-
-    if(-Not($dryRun -eq $True)) {
-        #Export DPIA100
-        Try{
-            new-RaetSession -ClientId $clientId -ClientSecret $clientSecret -TenantId $tenantID
-            $PostURL = "$($Script:BaseUri)/v1.0/files?uploadType=multipart"
-            $boundary = "foo_bar_baz"
-            $LF = "`r`n"
-            $bodyLines = (
-                "--$boundary",
-                "Content-Type: application/json; charset=UTF-8$LF",
-                "{",
-                "`"name`":`"$filename`",",
-                "`"businesstypeid`":`"101020`"",
-                "}$LF",
-                "--$boundary$LF",
-                "$output",
-                "--$boundary--"
-            ) -join $LF
-
-            $result = Invoke-WebRequest -Uri $PostURL -Method 'POST' -ContentType "multipart/related;boundary=$boundary" -Headers $Script:AuthenticationHeaders -Body $bodyLines
-
-            $success = $True
-            $auditMessage = "for person " + $p.DisplayName + " DPIA100 successfully exported"
-        }
-        Catch{
-            $auditMessage = "for person " + $p.DisplayName + " DPIA100 failed to export $_"
-        }
-    } else {
-        Write-Verbose -Verbose "Dry mode: $output"
+try {
+    # Verify if [aRef] has a value
+    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
+        throw 'The account reference could not be found'
     }
 
-} else {
-    $success = $True
-    $auditMessage = "for person " + $p.DisplayName + ": DPIA100 update not required."
+    #Default variables for export
+    $user = $actionContext.Configuration.dpia100.creatiegebruiker
+    $prefix = $actionContext.Configuration.dpia100.fileprefix
+    $stam = $actionContext.Configuration.dpia100.stam
+    $suffix = Get-Date -Format ddMMyyy
+    $filename = $prefix + $suffix + '-' + $($actionContext.Data.externalID) + ".txt"
+    $currentDate = Get-Date -Format ddMMyyyy
+    $productionTypeDate = Get-Date -Format MMyyyy
+
+    #Building fixed length fields
+    $processcode = "IMP $(" " * 3)".Substring(0, 3)
+    $indication = "$stam $(" " * 1)".Substring(0, 1) # V for Variable S for Stam
+    $exportDate = "$currentDate $(" " * 11)".Substring(0, 11)
+    $startDate = "$currentDate $(" " * 11)".Substring(0, 11)
+    $creationUser = "$user $(" " * 16)".Substring(0, 16)
+    $productionType = "NOR$productionTypeDate $(" " * 9)".Substring(0, 9)
+    $spaces = "$(" " * 30)".Substring(0, 30)
+
+    #Input Variables from HelloID
+    $objectId = "$($actionContext.Datat.externalId) $(" " * 50)".Substring(0, 50)
+    $rubrieksCode = "P01035 $(" " * 6)".Substring(0, 6)
+    $value = "$($actionContext.Data.mail) $(" " * 50)".Substring(0, 50)
+
+    $output = "$processcode" + "$rubriekscode" + "$objectId" + "$indication" + "$exportDate" + "$creationUser" + "$value" + "$startDate" + "$spaces" + "$productionType"
+
+    # Add a message and the result of each of the validations showing what will happen during enforcement
+    if ($actionContext.DryRun -eq $true) {
+        Write-Information "[DryRun] RAET-FileAPI-DPIA100 export [$output] for account [$($personContext.Person.DisplayName)] will be executed during enforcement"
+    }
+
+    # Process
+    if ($actionContext.Data.mail -ne $personContext.Person.Contact.Business.Email) {
+        if (-not($actionContext.DryRun -eq $true)) {
+            Write-Information "Exporting [$output] RAET-FileAPI-DPIA100 for account [$($personContext.Person.DisplayName)]"
+
+            try {
+                New-RAET-FileAPI-DPIA100-Session -ClientId $actionContext.Configuration.clientId -ClientSecret $actionContext.Configuration.clientSecret -TenantId $actionContext.Configuration.tenantId
+
+                $boundary = "foo_bar_baz"
+                $LF = "`r`n"
+                $bodyLines = (
+                    "--$boundary",
+                    "Content-Type: application/json; charset=UTF-8$LF",
+                    "{",
+                    "`"name`":`"$filename`",",
+                    "`"businesstypeid`":`"101020`"",
+                    "}$LF",
+                    "--$boundary$LF",
+                    "$output",
+                    "--$boundary--"
+                ) -join $LF
+
+                $splatUpdateParams = @{
+                    Uri         = "$($Script:BaseUri)/v1.0/files?uploadType=multipart"
+                    Headers     = $Script:AuthenticationHeaders
+                    Method      = 'POST'
+                    ContentType = "multipart/related;boundary=$boundary"
+                    Body        = $bodyLines
+                    
+                }
+
+                $result = Invoke-WebRequest @splatUpdateParams
+
+                $outputContext.Data = $actionContext.Data
+                $outputContext.AccountReference = $actionContext.Data.externalId
+    
+                $auditLogMessage = "Export [$output] RAET-FileAPI-DPIA100 was successful. AccountReference is: [$($outputContext.AccountReference)]"
+            
+                $outputContext.AccountCorrelated = $false
+                $outputContext.success = $true
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Action  = "CreateAccount"
+                        Message = $auditLogMessage
+                        IsError = $false
+                    })
+            }
+            catch {
+                $auditLogMessage = "Export [$output] RAET-FileAPI-DPIA100 failed. Error: $_.Exception.Message"
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Action  = "CreateAccount"
+                        Message = $auditLogMessage
+                        IsError = $true
+                    })
+            }
+        
+        }
+    }
+    else {
+        $auditLogMessage = "Export RAET-FileAPI-DPIA100 not required. Nothing to update for account [$($personContext.Person.DisplayName)]"
+        $outputContext.success = $true
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Action  = "CreateAccount"
+                Message = $auditLogMessage
+                IsError = $false
+            })
+    }
 }
-
-
-#build up result
-$result = [PSCustomObject]@{ 
-	Success = $success
-	AccountReference = $account.externalId
-	AuditDetails = $auditMessage
-    Account = $account
-};
-
-#send result back
-Write-Output $result | ConvertTo-Json -Depth 10
+catch {
+    $outputContext.success = $false
+    $ex = $PSItem
+    if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
+        $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObj = Resolve-RAET-FileAPI-DPIA100-HttpError -ErrorObject $ex
+        $auditMessage = "Could not export RAET-FileAPI-DPIA100 for account [$($personContext.Person.DisplayName)]. Error: $($errorObj.FriendlyMessage)"
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+    }
+    else {
+        $auditMessage = "Could not export RAET-FileAPI-DPIA100 account [$($personContext.Person.DisplayName)]. Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+    }
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Message = $auditMessage
+            IsError = $true
+        })
+}
