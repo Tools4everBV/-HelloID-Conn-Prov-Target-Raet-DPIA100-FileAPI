@@ -170,7 +170,7 @@ try {
     $productionTypeDate = Get-Date -Format MMyyyy
 
     #Building fixed length fields
-    $processcode = "IMP $(" " * 3)".Substring(0, 3)
+    $processcode = "$($actionContext.Configuration.dpia100.procescode) $(" " * 3)".Substring(0, 3)
     $indication = "$stam $(" " * 1)".Substring(0, 1) # V for Variable S for Stam
     $exportDate = "$currentDate $(" " * 11)".Substring(0, 11)
     $startDate = "$currentDate $(" " * 11)".Substring(0, 11)
