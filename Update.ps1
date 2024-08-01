@@ -179,7 +179,7 @@ try {
     $spaces = "$(" " * 30)".Substring(0, 30)
 
     #Input Variables from HelloID
-    $objectId = "$($actionContext.Datat.externalId) $(" " * 50)".Substring(0, 50)
+    $objectId = "$($actionContext.Data.externalId) $(" " * 50)".Substring(0, 50)
     $rubrieksCode = "P01035 $(" " * 6)".Substring(0, 6)
     $value = "$($actionContext.Data.mail) $(" " * 50)".Substring(0, 50)
 
