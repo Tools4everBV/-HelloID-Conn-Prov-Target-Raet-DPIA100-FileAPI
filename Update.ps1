@@ -230,7 +230,7 @@ try {
                 $outputContext.AccountCorrelated = $false
                 $outputContext.success = $true
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Action  = "CreateAccount"
+                        Action  = "UpdateAccount"
                         Message = $auditLogMessage
                         IsError = $false
                     })
@@ -238,7 +238,7 @@ try {
             catch {
                 $auditLogMessage = "Export [$output] RAET-FileAPI-DPIA100 failed. Error: $_.Exception.Message"
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Action  = "CreateAccount"
+                        Action  = "UpdateAccount"
                         Message = $auditLogMessage
                         IsError = $true
                     })
@@ -250,7 +250,7 @@ try {
         $auditLogMessage = "Export RAET-FileAPI-DPIA100 not required. Nothing to update for account [$($personContext.Person.DisplayName)]"
         $outputContext.success = $true
         $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Action  = "CreateAccount"
+                Action  = "UpdateAccount"
                 Message = $auditLogMessage
                 IsError = $false
             })
