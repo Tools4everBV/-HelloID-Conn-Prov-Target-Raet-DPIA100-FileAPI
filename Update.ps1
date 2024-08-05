@@ -224,8 +224,7 @@ try {
                 $result = Invoke-WebRequest @splatUpdateParams
 
                 $outputContext.Data = $actionContext.Data
-                $outputContext.AccountReference = $actionContext.Data.externalId
-    
+                
                 $auditLogMessage = "Export [$output] RAET-FileAPI-DPIA100 was successful. AccountReference is: [$($outputContext.AccountReference)]"
             
                 $outputContext.AccountCorrelated = $false
